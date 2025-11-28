@@ -1,0 +1,49 @@
+# Publishing guides and internal documentation (don't push to SDK repos)
+PUBLISHING_GUIDE.md
+PUBLISH_INSTRUCTIONS.md
+PUBLISH_NOW.md
+UPLOAD_NOW.txt
+FIX_*.md
+CHECK_*.md
+FIND_*.md
+NAMESPACE_*.md
+*_ERROR.md
+verify-credentials.ps1
+upload-to-central-portal.ps1
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+.eggs/
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
