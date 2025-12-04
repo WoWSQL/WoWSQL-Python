@@ -46,4 +46,4 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
-
+check-version.ps1
