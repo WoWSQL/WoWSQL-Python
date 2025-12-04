@@ -35,7 +35,7 @@ from .schema import (
     PermissionError,
 )
 
-__version__ = "0.5.0"
+__version__ = "1.1.0"
 __all__ = [
     # Database Client
     "WowSQLClient",

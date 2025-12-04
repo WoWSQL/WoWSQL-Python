@@ -62,7 +62,7 @@ class WowSQLClient:
         
         Note:
             For AUTHENTICATION OPERATIONS (OAuth, sign-in, sign-up), use ProjectAuthClient instead.
-            ProjectAuthClient uses Public API Key (wowbase_auth_...) or Service Role Key.
+            UNIFIED AUTHENTICATION: ProjectAuthClient uses the same keys (anon/service) as this client.
         """
         # Build base URL
         if project_url.startswith("http://") or project_url.startswith("https://"):

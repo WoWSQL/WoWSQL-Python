@@ -7,7 +7,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="wowsql",
-    version="0.5.0",
+    version="1.1.0",
     author="WowSQL Team",
     author_email="support@wowsql.com",
     description="Official Python SDK for WowSQL with project auth, S3 storage, SSL, and subdomain routing",

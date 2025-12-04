@@ -82,17 +82,17 @@ class ProjectAuthClient:
     """
     Client for project-level AUTHENTICATION endpoints.
     
-    This client is used for AUTHENTICATION OPERATIONS (OAuth, sign-in, sign-up, user management).
-    Use Public API Key or Service Role Key for authentication.
+    UNIFIED AUTHENTICATION: Uses the same API keys (anon/service) as database operations.
+    One project = one set of keys for ALL operations (auth + database).
     
     Key Types:
-        - Public API Key (wowbase_auth_...): For authentication operations (OAuth, sign-in, sign-up)
-        - Service Role Key (wowbase_service_...): Can be used for both auth and database operations
+        - Anonymous Key (wowsql_anon_...): For client-side auth operations (signup, login, OAuth)
+        - Service Role Key (wowsql_service_...): For server-side auth operations (admin, full access)
     
     Example:
         >>> auth = ProjectAuthClient(
         ...     project_url="myproject",
-        ...     public_api_key="wowbase_auth_..."  # Public API Key or Service Role Key
+        ...     api_key="wowsql_anon_..."  # Use anon key for client-side, service key for server-side
         ... )
         >>> url = auth.get_oauth_authorization_url(provider="github")
     """
@@ -105,19 +105,22 @@ class ProjectAuthClient:
         secure: bool = True,
         timeout: int = 30,
         verify_ssl: bool = True,
-        public_api_key: Optional[str] = None,
+        api_key: Optional[str] = None,
+        public_api_key: Optional[str] = None,  # Deprecated: use api_key instead
         token_storage: Optional[TokenStorage] = None,
         session: Optional[requests.Session] = None,
     ) -> None:
         """
         Initialize ProjectAuthClient for AUTHENTICATION OPERATIONS.
         
+        UNIFIED AUTHENTICATION: Uses the same API keys (anon/service) as database operations.
+        
         Args:
             project_url: Project subdomain or full URL
-            public_api_key: Public API Key (wowbase_auth_...) or Service Role Key (wowbase_service_...).
-                This key is used for AUTHENTICATION OPERATIONS only.
-                Use Public API Key for client-side/public authentication flows.
-                Service Role Key can be used for server-side authentication operations.
+            api_key: Unified API key - Anonymous Key (wowsql_anon_...) for client-side,
+                    or Service Role Key (wowsql_service_...) for server-side.
+                    This same key works for both auth and database operations.
+            public_api_key: Deprecated - use api_key instead. Kept for backward compatibility.
             base_domain: Base domain (default: wowsql.com)
             secure: Use HTTPS (default: True)
             timeout: Request timeout in seconds (default: 30)
@@ -126,18 +129,24 @@ class ProjectAuthClient:
             session: Optional requests.Session for custom HTTP configuration
         
         Note:
-            For DATABASE OPERATIONS (CRUD on tables), use WowSQLClient instead.
-            WowSQLClient uses Service Role Key or Anonymous Key.
+            - Use Anonymous Key (wowsql_anon_...) for client-side/public auth flows
+            - Use Service Role Key (wowsql_service_...) for server-side/admin operations
+            - Same keys work for both auth and database operations (unified authentication)
         """
+        # Support both api_key (new) and public_api_key (deprecated) for backward compatibility
+        unified_api_key = api_key or public_api_key
+        
         self.base_url = _build_auth_base_url(project_url, base_domain, secure)
         self.timeout = timeout
-        self.public_api_key = public_api_key
+        self.api_key = unified_api_key
+        self.public_api_key = unified_api_key  # Keep for backward compatibility
 
         self.session = session or requests.Session()
         self.session.verify = verify_ssl
         self.session.headers.update({"Content-Type": "application/json"})
-        if public_api_key:
-            self.session.headers["X-Wow-Public-Key"] = public_api_key
+        if unified_api_key:
+            # UNIFIED AUTHENTICATION: Use Authorization header (same as database operations)
+            self.session.headers["Authorization"] = f"Bearer {unified_api_key}"
 
         self.storage = token_storage or MemoryTokenStorage()
         self._access_token = self.storage.get_access_token()
