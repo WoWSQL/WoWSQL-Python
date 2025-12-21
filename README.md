@@ -145,7 +145,13 @@ print(result["message"])  # "If that email exists, a password reset link has bee
 # Reset password (after user clicks email link)
 result = auth.reset_password(
 - ✅ Full CRUD operations (Create, Read, Update, Delete)
-- ✅ Advanced filtering (eq, neq, gt, gte, lt, lte, like, is_null)
+- ✅ Advanced filtering (eq, neq, gt, gte, lt, lte, like, is_null, in, not_in, between, not_between)
+- ✅ Logical operators (AND, OR)
+- ✅ GROUP BY and aggregate functions (COUNT, SUM, AVG, MAX, MIN)
+- ✅ HAVING clause for filtering aggregated results
+- ✅ Multiple ORDER BY columns
+- ✅ Date/time functions in SELECT and filters
+- ✅ Expressions in SELECT (e.g., "COUNT(*)", "DATE(created_at) as date")
 - ✅ Pagination (limit, offset)
 - ✅ Sorting (order_by)
 - ✅ Raw SQL queries
@@ -205,6 +211,40 @@ gmail_users = client.table("users") \
     .select("*") \
     .like("email", "%@gmail.com") \
     .execute()
+
+# IN operator
+categories = client.table("products") \
+    .select("*") \
+    .filter("category", "in", ["electronics", "books", "clothing"]) \
+    .execute()
+
+# BETWEEN operator
+price_range = client.table("products") \
+    .select("*") \
+    .filter("price", "between", [10, 100]) \
+    .execute()
+
+# OR conditions
+results = client.table("products") \
+    .filter("category", "eq", "electronics", "AND") \
+    .or("price", "gt", 1000) \
+    .execute()
+
+# GROUP BY with aggregates
+stats = client.table("orders") \
+    .select("DATE(created_at) as date", "COUNT(*) as count", "SUM(total) as revenue") \
+    .filter("status", "eq", "completed") \
+    .group_by("DATE(created_at)") \
+    .having("COUNT(*)", "gt", 10) \
+    .order_by([("date", "desc"), ("count", "asc")]) \
+    .limit(100) \
+    .execute()
+
+# Date/time functions
+recent_orders = client.table("orders") \
+    .select("*") \
+    .filter("created_at", "gte", "DATE_SUB(NOW(), INTERVAL 30 DAY)") \
+    .execute()
 ```
 
 ### Insert Data
@@ -252,6 +292,230 @@ result = client.table("users").delete() \
     .execute()
 ```
 
+## Advanced Query Features
+
+### GROUP BY and Aggregates
+
+GROUP BY supports both simple column names and SQL expressions with functions. All expressions are validated for security.
+
+#### Basic GROUP BY
+
+```python
+# Group by single column
+result = client.table("products") \
+    .select("category", "COUNT(*) as count", "AVG(price) as avg_price") \
+    .group_by("category") \
+    .get()
+
+# Group by multiple columns
+result = client.table("sales") \
+    .select("region", "category", "SUM(amount) as total") \
+    .group_by("region", "category") \
+    .get()
+```
+
+#### GROUP BY with Date/Time Functions
+
+```python
+# Group by date (extract date part)
+result = client.table("orders") \
+    .select("DATE(created_at) as date", "COUNT(*) as orders", "SUM(total) as revenue") \
+    .group_by("DATE(created_at)") \
+    .order_by("date", "desc") \
+    .get()
+
+# Group by year
+result = client.table("orders") \
+    .select("YEAR(created_at) as year", "COUNT(*) as orders") \
+    .group_by("YEAR(created_at)") \
+    .get()
+
+# Group by year and month
+result = client.table("orders") \
+    .select("YEAR(created_at) as year", "MONTH(created_at) as month", "SUM(total) as revenue") \
+    .group_by("YEAR(created_at)", "MONTH(created_at)") \
+    .order_by("year", "desc") \
+    .order_by("month", "desc") \
+    .get()
+
+# Group by week
+result = client.table("orders") \
+    .select("WEEK(created_at) as week", "COUNT(*) as orders") \
+    .group_by("WEEK(created_at)") \
+    .get()
+
+# Group by quarter
+result = client.table("orders") \
+    .select("QUARTER(created_at) as quarter", "SUM(total) as revenue") \
+    .group_by("QUARTER(created_at)") \
+    .get()
+```
+
+#### GROUP BY with String Functions
+
+```python
+# Group by first letter of name
+result = client.table("users") \
+    .select("LEFT(name, 1) as first_letter", "COUNT(*) as count") \
+    .group_by("LEFT(name, 1)") \
+    .get()
+
+# Group by uppercase category
+result = client.table("products") \
+    .select("UPPER(category) as category_upper", "COUNT(*) as count") \
+    .group_by("UPPER(category)") \
+    .get()
+```
+
+#### GROUP BY with Mathematical Functions
+
+```python
+# Group by rounded price ranges
+result = client.table("products") \
+    .select("ROUND(price, -1) as price_range", "COUNT(*) as count") \
+    .group_by("ROUND(price, -1)") \
+    .get()
+
+# Group by price tier (using FLOOR)
+result = client.table("products") \
+    .select("FLOOR(price / 10) * 10 as price_tier", "COUNT(*) as count") \
+    .group_by("FLOOR(price / 10) * 10") \
+    .get()
+```
+
+#### Supported Functions in GROUP BY
+
+The following functions are allowed in GROUP BY expressions:
+
+**Date/Time Functions:**
+- `DATE()`, `YEAR()`, `MONTH()`, `DAY()`, `DAYOFMONTH()`, `DAYOFWEEK()`, `DAYOFYEAR()`
+- `WEEK()`, `QUARTER()`, `HOUR()`, `MINUTE()`, `SECOND()`
+- `DATE_FORMAT()`, `TIME()`, `DATE_ADD()`, `DATE_SUB()`
+- `DATEDIFF()`, `TIMEDIFF()`, `TIMESTAMPDIFF()`
+- `NOW()`, `CURRENT_TIMESTAMP()`, `CURDATE()`, `CURRENT_DATE()`
+- `CURTIME()`, `CURRENT_TIME()`, `UNIX_TIMESTAMP()`
+
+**String Functions:**
+- `CONCAT()`, `CONCAT_WS()`, `SUBSTRING()`, `SUBSTR()`, `LEFT()`, `RIGHT()`
+- `LENGTH()`, `CHAR_LENGTH()`, `UPPER()`, `LOWER()`, `TRIM()`, `LTRIM()`, `RTRIM()`
+- `REPLACE()`, `LOCATE()`, `POSITION()`
+
+**Mathematical Functions:**
+- `ABS()`, `ROUND()`, `CEIL()`, `CEILING()`, `FLOOR()`, `POW()`, `POWER()`, `SQRT()`, `MOD()`, `RAND()`
+
+**Note:** All expressions are validated for security. Only whitelisted functions are allowed.
+
+### HAVING Clause
+
+HAVING is used to filter aggregated results after GROUP BY. It supports aggregate functions and comparison operators.
+
+#### Basic HAVING
+
+```python
+# Filter aggregated results
+result = client.table("products") \
+    .select("category", "COUNT(*) as count") \
+    .group_by("category") \
+    .having("COUNT(*)", "gt", 10) \
+    .get()
+
+# Multiple HAVING conditions (AND logic)
+result = client.table("orders") \
+    .select("DATE(created_at) as date", "SUM(total) as revenue") \
+    .group_by("DATE(created_at)") \
+    .having("SUM(total)", "gt", 1000) \
+    .having("COUNT(*)", "gte", 5) \
+    .get()
+```
+
+#### HAVING with Aggregate Functions
+
+```python
+# Filter by average
+result = client.table("products") \
+    .select("category", "AVG(price) as avg_price", "COUNT(*) as count") \
+    .group_by("category") \
+    .having("AVG(price)", "gt", 100) \
+    .having("COUNT(*)", "gte", 5) \
+    .get()
+
+# Filter by sum
+result = client.table("orders") \
+    .select("customer_id", "SUM(total) as total_spent") \
+    .group_by("customer_id") \
+    .having("SUM(total)", "gt", 1000) \
+    .get()
+
+# Filter by max/min
+result = client.table("products") \
+    .select("category", "MAX(price) as max_price", "MIN(price) as min_price") \
+    .group_by("category") \
+    .having("MAX(price)", "gt", 500) \
+    .get()
+```
+
+#### Supported HAVING Operators
+
+- `eq` - Equal to
+- `neq` - Not equal to
+- `gt` - Greater than
+- `gte` - Greater than or equal to
+- `lt` - Less than
+- `lte` - Less than or equal to
+
+#### Supported Aggregate Functions in HAVING
+
+- `COUNT(*)` or `COUNT(column)` - Count of rows
+- `SUM(column)` - Sum of values
+- `AVG(column)` - Average of values
+- `MAX(column)` - Maximum value
+- `MIN(column)` - Minimum value
+- `GROUP_CONCAT(column)` - Concatenated values
+- `STDDEV(column)`, `STDDEV_POP(column)`, `STDDEV_SAMP(column)` - Standard deviation
+- `VARIANCE(column)`, `VAR_POP(column)`, `VAR_SAMP(column)` - Variance
+
+### Multiple ORDER BY
+
+```python
+# Order by multiple columns
+result = client.table("products") \
+    .select("*") \
+    .order_by([("category", "asc"), ("price", "desc"), ("created_at", "desc")]) \
+    .get()
+
+# Using OrderByItem objects
+from wowsql.types import OrderByItem
+result = client.table("products") \
+    .order_by([
+        OrderByItem(column="category", direction="asc"),
+        OrderByItem(column="price", direction="desc")
+    ]) \
+    .get()
+```
+
+### Date/Time Functions
+
+```python
+# Filter by date range using functions
+result = client.table("orders") \
+    .select("*") \
+    .filter("created_at", "gte", "DATE_SUB(NOW(), INTERVAL 7 DAY)") \
+    .get()
+
+# Group by date
+result = client.table("orders") \
+    .select("DATE(created_at) as date", "COUNT(*) as count") \
+    .group_by("DATE(created_at)") \
+    .get()
+
+# Filter by year/month
+result = client.table("orders") \
+    .select("*") \
+    .filter("YEAR(created_at)", "eq", 2024) \
+    .filter("MONTH(created_at)", "eq", 1) \
+    .get()
+```
+
 ### Filter Operators
 
 ```python
@@ -278,6 +542,25 @@ result = client.table("users").delete() \
 
 # Is null
 .is_null("deleted_at")
+
+# IN operator (value must be a list)
+.filter("category", "in", ["electronics", "books", "clothing"])
+
+# NOT IN operator
+.filter("status", "not_in", ["deleted", "archived"])
+
+# BETWEEN operator (value must be a list/tuple of 2 values)
+.filter("price", "between", [10, 100])
+
+# NOT BETWEEN operator
+.filter("age", "not_between", [18, 65])
+
+# IS NOT NULL
+.filter("email", "is_not", None)
+
+# OR logical operator
+.filter("category", "eq", "electronics", "AND")
+.filter("price", "gt", 1000, "OR")  # OR condition
 ```
 
 ### Storage Operations

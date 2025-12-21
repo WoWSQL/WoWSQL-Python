@@ -1,22 +1,38 @@
 """Type definitions for WOWSQL SDK."""
 
-from typing import Any, Dict, List, Literal, Optional, TypedDict, Union
+from typing import Any, Dict, List, Literal, Optional, TypedDict, Union, Tuple
 from typing_extensions import NotRequired
 
 
-class FilterExpression(TypedDict):
+class FilterExpression(TypedDict, total=False):
     """Filter expression for queries."""
     column: str
-    operator: Literal["eq", "neq", "gt", "gte", "lt", "lte", "like", "is"]
+    operator: Literal["eq", "neq", "gt", "gte", "lt", "lte", "like", "is", "in", "not_in", "between", "not_between", "is_not"]
+    value: Union[str, int, float, bool, None, List[Any], Tuple[Any, Any]]
+    logical_op: NotRequired[Literal["AND", "OR"]]  # For combining filters
+
+
+class HavingFilter(TypedDict):
+    """HAVING clause filter for aggregated results."""
+    column: str  # Can be aggregate function like "COUNT(*)" or column name
+    operator: Literal["eq", "neq", "gt", "gte", "lt", "lte"]
     value: Union[str, int, float, bool, None]
+
+
+class OrderByItem(TypedDict):
+    """Order by item for multiple column sorting."""
+    column: str
+    direction: Literal["asc", "desc"]
 
 
 class QueryOptions(TypedDict, total=False):
     """Options for querying records."""
-    select: NotRequired[Union[str, List[str]]]
+    select: NotRequired[Union[str, List[str]]]  # Can include expressions like "COUNT(*)", "DATE(created_at) as date"
     filter: NotRequired[Union[FilterExpression, List[FilterExpression]]]
-    order: NotRequired[str]
-    order_direction: NotRequired[Literal["asc", "desc"]]
+    group_by: NotRequired[Union[str, List[str]]]  # Columns to group by
+    having: NotRequired[Union[HavingFilter, List[HavingFilter]]]  # HAVING clause filters
+    order: NotRequired[Union[str, List[OrderByItem]]]  # Single column (str) or multiple (List[OrderByItem])
+    order_direction: NotRequired[Literal["asc", "desc"]]  # Used only if order is a string
     limit: NotRequired[int]
     offset: NotRequired[int]
 
