@@ -52,25 +52,29 @@ storage = WowSQLStorage(
     api_key="your-api-key"
 )
 
-# Upload file
-storage.upload("local-file.pdf", "uploads/document.pdf")
+# Upload file from local path
+storage.upload_from_path("local-file.pdf", "uploads/document.pdf")
 
-# Download file (get presigned URL)
-url = storage.download("uploads/document.pdf")
-print(url)
+# Upload file object
+with open("local-file.pdf", "rb") as f:
+    storage.upload_file(f, "uploads/document.pdf")
+
+# Get presigned URL for file
+url_data = storage.get_file_url("uploads/document.pdf")
+print(url_data["file_url"])
 
 # List files
 files = storage.list_files(prefix="uploads/")
 for file in files:
-    print(f"{file.key}: {file.size} bytes")
+    print(f"{file.key}: {file.size_mb:.2f} MB")
 
 # Delete file
 storage.delete_file("uploads/document.pdf")
 
 # Check storage quota
 quota = storage.get_quota()
-print(f"Used: {quota.used_bytes}/{quota.limit_bytes} bytes")
-print(f"Available: {quota.available_bytes} bytes")
+print(f"Used: {quota.used_gb:.2f} GB")
+print(f"Available: {quota.available_gb:.2f} GB")
 ```
 
 ### Project Authentication (NEW)
@@ -144,6 +148,15 @@ print(result["message"])  # "If that email exists, a password reset link has bee
 
 # Reset password (after user clicks email link)
 result = auth.reset_password(
+    token="reset_token_from_email",
+    new_password="NewSecurePassword123"
+)
+print(result["message"])
+```
+
+## Features
+
+### Database Features
 - ✅ Full CRUD operations (Create, Read, Update, Delete)
 - ✅ Advanced filtering (eq, neq, gt, gte, lt, lte, like, is_null, in, not_in, between, not_between)
 - ✅ Logical operators (AND, OR)
@@ -154,7 +167,7 @@ result = auth.reset_password(
 - ✅ Expressions in SELECT (e.g., "COUNT(*)", "DATE(created_at) as date")
 - ✅ Pagination (limit, offset)
 - ✅ Sorting (order_by)
-- ✅ Raw SQL queries
+- ✅ Get record by ID
 - ✅ Table schema introspection
 - ✅ Automatic rate limit handling
 - ✅ Built-in error handling
@@ -162,13 +175,14 @@ result = auth.reset_password(
 
 ### Storage Features (NEW!)
 - ✅ S3-compatible storage client
-- ✅ File upload with automatic quota validation
-- ✅ File download (presigned URLs)
+- ✅ File upload from path or file object with automatic quota validation
+- ✅ Presigned URL generation for file access
 - ✅ File listing with metadata
-- ✅ File deletion (single and batch)
+- ✅ File deletion
 - ✅ Storage quota management
 - ✅ Multi-region support
 - ✅ Client-side limit enforcement
+- ✅ Storage provisioning and management
 
 ## Usage Examples
 
@@ -556,7 +570,7 @@ result = client.table("orders") \
 .filter("age", "not_between", [18, 65])
 
 # IS NOT NULL
-.filter("email", "is_not", None)
+.is_not_null("email")
 
 # OR logical operator
 .filter("category", "eq", "electronics", "AND")
@@ -573,60 +587,48 @@ storage = WowSQLStorage(
     api_key="your-api-key"
 )
 
-# Upload file with metadata
-storage.upload(
+# Upload file from local path
+storage.upload_from_path(
     "document.pdf",
-    "uploads/2024/document.pdf",
-    metadata={"category": "reports"}
+    "uploads/2024/document.pdf"
 )
 
 # Upload file object
 with open("image.jpg", "rb") as f:
-    storage.upload_fileobj(f, "images/photo.jpg")
-
-# Check if file exists
-if storage.file_exists("uploads/document.pdf"):
-    print("File exists!")
-
-# Get file information
-info = storage.get_file_info("uploads/document.pdf")
-print(f"Size: {info.size} bytes")
-print(f"Modified: {info.last_modified}")
+    storage.upload_file(f, "images/photo.jpg")
 
 # List files with prefix
-files = storage.list_files(prefix="uploads/2024/", limit=100)
+files = storage.list_files(prefix="uploads/2024/", max_keys=100)
 for file in files:
-    print(f"{file.key}: {file.size} bytes")
+    print(f"{file.key}: {file.size_mb:.2f} MB")
 
-# Download file to local path
-storage.download("uploads/document.pdf", "local-copy.pdf")
+# Get presigned URL (valid for 1 hour by default)
+url_data = storage.get_file_url("uploads/document.pdf", expires_in=3600)
+print(url_data["file_url"])  # https://s3.amazonaws.com/...
 
-# Get presigned URL (valid for 1 hour)
-url = storage.download("uploads/document.pdf")
-print(url)  # https://s3.amazonaws.com/...
+# Get presigned URL for upload
+upload_url = storage.get_presigned_url(
+    "new-file.pdf",
+    expires_in=3600,
+    operation="put_object"
+)
 
-# Delete single file
+# Delete file
 storage.delete_file("uploads/old-file.pdf")
-
-# Delete multiple files
-storage.delete_files([
-    "uploads/file1.pdf",
-    "uploads/file2.pdf",
-    "uploads/file3.pdf"
-])
 
 # Check quota before upload
 quota = storage.get_quota()
-file_size = storage.get_file_size("large-file.zip")
+print(f"Available: {quota.available_gb:.2f} GB")
 
-if quota.available_bytes < file_size:
-    print(f"Not enough storage! Need {file_size} bytes, have {quota.available_bytes}")
-else:
-    storage.upload("large-file.zip", "backups/large-file.zip")
+# Get storage information
+info = storage.get_storage_info()
+print(f"Bucket: {info['bucket_name']}")
+print(f"Total objects: {info['total_objects']}")
 
 # Handle storage limit errors
 try:
-    storage.upload("huge-file.zip", "uploads/huge-file.zip")
+    with open("huge-file.zip", "rb") as f:
+        storage.upload_file(f, "uploads/huge-file.zip")
 except StorageLimitExceededError as e:
     print(f"Storage limit exceeded: {e}")
     print("Please upgrade your plan or delete old files")
@@ -677,17 +679,17 @@ except StorageError as e:
 ### Utility Methods
 
 ```python
-# Check API health
-health = client.health()
-print(health)  # {'status': 'healthy', ...}
-
 # List all tables
 tables = client.list_tables()
 print(tables)  # ['users', 'posts', 'comments']
 
 # Get table schema
-schema = client.describe_table("users")
-print(schema)  # {'columns': [...], 'row_count': 100}
+schema = client.get_table_schema("users")
+print(schema)  # {'table': 'users', 'columns': [...], 'primary_key': 'id'}
+
+# Get record by ID
+user = client.table("users").get_by_id(1)
+print(user)  # {'id': 1, 'name': 'John', ...}
 ```
 
 ## Response Object
@@ -740,8 +742,10 @@ storage = WowSQLStorage(
 
 # Manually check quota
 quota = storage.get_quota()
-if quota.available_bytes > file_size:
-    storage.upload("file.pdf", "uploads/file.pdf", check_quota=False)
+file_size_gb = file_size / (1024**3)  # Convert bytes to GB
+if quota.available_gb > file_size_gb:
+    with open("file.pdf", "rb") as f:
+        storage.upload_file(f, "uploads/file.pdf", check_quota=False)
 ```
 
 ## API Keys
@@ -910,6 +914,9 @@ posts = client.table("posts") \
     .limit(10) \
     .execute()
 
+# Get post by ID
+post = client.table("posts").get_by_id(1)
+
 # Get post with comments
 post = client.table("posts").select("*").eq("id", 1).execute()
 comments = client.table("comments").select("*").eq("post_id", 1).execute()
@@ -926,13 +933,13 @@ storage = WowSQLStorage(project_url="...", api_key="...")
 # Upload user avatar
 user_id = 123
 avatar_path = f"avatars/{user_id}.jpg"
-storage.upload("avatar.jpg", avatar_path)
+storage.upload_from_path("avatar.jpg", avatar_path)
 
 # Save avatar URL in database
-avatar_url = storage.download(avatar_path)
-client.table("users").update({
-    "avatar_url": avatar_url
-}).eq("id", user_id).execute()
+url_data = storage.get_file_url(avatar_path)
+client.table("users").update(user_id, {
+    "avatar_url": url_data["file_url"]
+})
 
 # List user's files
 user_files = storage.list_files(prefix=f"users/{user_id}/")

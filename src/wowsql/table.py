@@ -46,16 +46,21 @@ class QueryBuilder:
     
     def filter(
         self,
-        column: str,
-        operator: str,
-        value: Any,
+        column: Union[str, FilterExpression, Dict[str, Any]],
+        operator: Optional[str] = None,
+        value: Any = None,
         logical_op: str = "AND"
     ) -> "QueryBuilder":
         """
         Add a filter condition.
         
+        Supports multiple calling styles for backward compatibility:
+        1. New style: filter(column, operator, value) - e.g., filter("age", "gt", 18)
+        2. Dict style: filter({"column": "age", "operator": "gt", "value": 18})
+        3. Old style: filter({"age": 18}) - defaults to "eq" operator
+        
         Args:
-            column: Column name or expression
+            column: Column name, or FilterExpression dict, or dict with column as key
             operator: Operator (eq, neq, gt, gte, lt, lte, like, in, not_in, between, not_between, is, is_not)
             value: Filter value (for 'in' and 'not_in', use a list; for 'between', use a tuple/list of 2 values)
             logical_op: Logical operator for combining with previous filters ("AND" or "OR")
@@ -64,14 +69,58 @@ class QueryBuilder:
             Self for chaining
             
         Examples:
-            >>> query.filter("age", "gt", 18)
+            >>> query.filter("age", "gt", 18)  # New style
+            >>> query.filter({"column": "age", "operator": "gt", "value": 18})  # Dict style
+            >>> query.filter({"username": "admin"})  # Old style (defaults to eq)
             >>> query.filter("category", "in", ["electronics", "books"])
-            >>> query.filter("price", "between", [10, 100])
-            >>> query.filter("status", "is", None)  # IS NULL
         """
         if "filter" not in self.options:
             self.options["filter"] = []
         
+        # Handle dict-style filter (backward compatibility)
+        if isinstance(column, dict):
+            # Check if it's a FilterExpression dict
+            if "column" in column and "operator" in column:
+                filter_expr: FilterExpression = {
+                    "column": column["column"],
+                    "operator": column["operator"],
+                    "value": column.get("value"),
+                    "logical_op": column.get("logical_op", logical_op)
+                }
+            else:
+                # Old style: {"column_name": value} - defaults to "eq" operator
+                # Support both single key-value and multiple
+                if len(column) == 1:
+                    col_name, col_value = next(iter(column.items()))
+                    filter_expr: FilterExpression = {
+                        "column": col_name,
+                        "operator": "eq",
+                        "value": col_value,
+                        "logical_op": logical_op
+                    }
+                else:
+                    # Multiple filters - convert to list
+                    filter_list = []
+                    for col_name, col_value in column.items():
+                        filter_list.append({
+                            "column": col_name,
+                            "operator": "eq",
+                            "value": col_value,
+                            "logical_op": logical_op
+                        })
+                    current_filter = self.options["filter"]
+                    if isinstance(current_filter, list):
+                        current_filter.extend(filter_list)
+                    else:
+                        self.options["filter"] = [current_filter] + filter_list if current_filter else filter_list
+                    return self
+        else:
+            # New style: filter(column, operator, value)
+            if operator is None or value is None:
+                raise TypeError(
+                    f"filter() missing required arguments: 'operator' and 'value'. "
+                    f"Use filter(column, operator, value) or filter({{'column': col, 'operator': op, 'value': val}})"
+                )
         filter_expr: FilterExpression = {
             "column": column,
             "operator": operator,
@@ -86,6 +135,79 @@ class QueryBuilder:
             self.options["filter"] = [current_filter, filter_expr]
         
         return self
+    
+    # Convenience methods for common operators
+    def eq(self, column: str, value: Any) -> "QueryBuilder":
+        """Filter where column equals value."""
+        return self.filter(column, "eq", value)
+    
+    def neq(self, column: str, value: Any) -> "QueryBuilder":
+        """Filter where column does not equal value."""
+        return self.filter(column, "neq", value)
+    
+    def gt(self, column: str, value: Any) -> "QueryBuilder":
+        """Filter where column is greater than value."""
+        return self.filter(column, "gt", value)
+    
+    def gte(self, column: str, value: Any) -> "QueryBuilder":
+        """Filter where column is greater than or equal to value."""
+        return self.filter(column, "gte", value)
+    
+    def lt(self, column: str, value: Any) -> "QueryBuilder":
+        """Filter where column is less than value."""
+        return self.filter(column, "lt", value)
+    
+    def lte(self, column: str, value: Any) -> "QueryBuilder":
+        """Filter where column is less than or equal to value."""
+        return self.filter(column, "lte", value)
+    
+    def like(self, column: str, value: str) -> "QueryBuilder":
+        """Filter where column matches pattern (SQL LIKE)."""
+        return self.filter(column, "like", value)
+    
+    def is_null(self, column: str) -> "QueryBuilder":
+        """Filter where column IS NULL."""
+        return self.filter(column, "is", None)
+    
+    def is_not_null(self, column: str) -> "QueryBuilder":
+        """Filter where column IS NOT NULL."""
+        return self.filter(column, "is_not", None)
+    
+    def in_(self, column: str, values: List[Any]) -> "QueryBuilder":
+        """Filter where column is in list of values."""
+        return self.filter(column, "in", values)
+    
+    def not_in(self, column: str, values: List[Any]) -> "QueryBuilder":
+        """Filter where column is not in list of values."""
+        return self.filter(column, "not_in", values)
+    
+    def between(self, column: str, min_value: Any, max_value: Any) -> "QueryBuilder":
+        """Filter where column is between min and max values."""
+        return self.filter(column, "between", [min_value, max_value])
+    
+    def not_between(self, column: str, min_value: Any, max_value: Any) -> "QueryBuilder":
+        """Filter where column is not between min and max values."""
+        return self.filter(column, "not_between", [min_value, max_value])
+    
+    def or_(self, column: str, operator: str, value: Any) -> "QueryBuilder":
+        """Add an OR filter condition."""
+        return self.filter(column, operator, value, logical_op="OR")
+    
+    def __getattr__(self, name: str):
+        """
+        Support Python keywords as method names (workaround for 'or' and 'in').
+        
+        This allows using .or() and .in() even though they are Python keywords.
+        """
+        if name == "or":
+            return self.or_
+        elif name == "in":
+            return self.in_
+        raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
+    
+    def execute(self) -> QueryResponse:
+        """Execute the query (alias for get)."""
+        return self.get()
     
     def order_by(
         self,
@@ -346,17 +468,31 @@ class Table:
         """
         return QueryBuilder(self.client, self.table_name).select(columns)
     
-    def filter(self, filter_expr: FilterExpression) -> QueryBuilder:
+    def filter(
+        self, 
+        filter_expr: Union[FilterExpression, Dict[str, Any], str],
+        operator: Optional[str] = None,
+        value: Any = None,
+        logical_op: str = "AND"
+    ) -> QueryBuilder:
         """
         Start a query with a filter.
         
+        Supports multiple calling styles for backward compatibility:
+        1. New style: filter(column, operator, value)
+        2. Dict style: filter({"column": "age", "operator": "gt", "value": 18})
+        3. Old style: filter({"age": 18}) - defaults to "eq" operator
+        
         Args:
-            filter_expr: Filter expression
+            filter_expr: Filter expression dict, or column name (if using new style)
+            operator: Operator (if using new style)
+            value: Filter value (if using new style)
+            logical_op: Logical operator for combining filters
             
         Returns:
             QueryBuilder for chaining
         """
-        return QueryBuilder(self.client, self.table_name).filter(filter_expr)
+        return QueryBuilder(self.client, self.table_name).filter(filter_expr, operator, value, logical_op)
     
     def get(self, options: Optional[QueryOptions] = None) -> QueryResponse:
         """
@@ -393,6 +529,18 @@ class Table:
             Create response with new record ID
         """
         return self.client._request("POST", f"/{self.table_name}", json=data)
+    
+    def insert(self, data: Dict[str, Any]) -> CreateResponse:
+        """
+        Insert a new record (alias for create).
+        
+        Args:
+            data: Record data
+            
+        Returns:
+            Create response with new record ID
+        """
+        return self.create(data)
     
     def update(self, record_id: Union[int, str], data: Dict[str, Any]) -> UpdateResponse:
         """

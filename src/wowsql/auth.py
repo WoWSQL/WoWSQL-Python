@@ -349,6 +349,148 @@ class ProjectAuthClient:
             "message": data.get("message", "Password reset successfully! You can now login with your new password")
         }
 
+    def send_otp(self, *, email: str, purpose: str = "login") -> Dict[str, Any]:
+        """
+        Send OTP code to user's email.
+        
+        Supports login, signup, and password_reset purposes.
+        
+        Args:
+            email: User's email address
+            purpose: Purpose of OTP - 'login', 'signup', or 'password_reset' (default: 'login')
+        
+        Returns:
+            Dict with success status and message
+        """
+        if purpose not in ['login', 'signup', 'password_reset']:
+            raise WowSQLError("Purpose must be 'login', 'signup', or 'password_reset'")
+        
+        payload = {
+            "email": email,
+            "purpose": purpose
+        }
+        data = self._request("POST", "/otp/send", json=payload)
+        return {
+            "success": data.get("success", True),
+            "message": data.get("message", "If that email exists, an OTP code has been sent")
+        }
+
+    def verify_otp(
+        self,
+        *,
+        email: str,
+        otp: str,
+        purpose: str = "login",
+        new_password: Optional[str] = None
+    ) -> AuthResponse:
+        """
+        Verify OTP and complete authentication.
+        
+        For signup: Creates new user if doesn't exist
+        For login: Authenticates existing user
+        For password_reset: Updates password if new_password provided
+        
+        Args:
+            email: User's email address
+            otp: 6-digit OTP code
+            purpose: Purpose of OTP - 'login', 'signup', or 'password_reset' (default: 'login')
+            new_password: Required for password_reset purpose, new password (minimum 8 characters)
+        
+        Returns:
+            AuthResponse with session tokens and user info (for login/signup)
+            Dict with success message (for password_reset)
+        """
+        if purpose not in ['login', 'signup', 'password_reset']:
+            raise WowSQLError("Purpose must be 'login', 'signup', or 'password_reset'")
+        
+        if purpose == 'password_reset' and not new_password:
+            raise WowSQLError("new_password is required for password_reset purpose")
+        
+        payload = {
+            "email": email,
+            "otp": otp,
+            "purpose": purpose
+        }
+        if new_password:
+            payload["new_password"] = new_password
+        
+        data = self._request("POST", "/otp/verify", json=payload)
+        
+        if purpose == 'password_reset':
+            return {
+                "success": data.get("success", True),
+                "message": data.get("message", "Password reset successfully! You can now login with your new password")
+            }
+        
+        session = self._persist_session(data)
+        user = AuthUser(**_normalize_user(data.get("user"))) if data.get("user") else None
+        return AuthResponse(session=session, user=user)
+
+    def send_magic_link(self, *, email: str, purpose: str = "login") -> Dict[str, Any]:
+        """
+        Send magic link to user's email.
+        
+        Supports login, signup, and email_verification purposes.
+        
+        Args:
+            email: User's email address
+            purpose: Purpose of magic link - 'login', 'signup', or 'email_verification' (default: 'login')
+        
+        Returns:
+            Dict with success status and message
+        """
+        if purpose not in ['login', 'signup', 'email_verification']:
+            raise WowSQLError("Purpose must be 'login', 'signup', or 'email_verification'")
+        
+        payload = {
+            "email": email,
+            "purpose": purpose
+        }
+        data = self._request("POST", "/magic-link/send", json=payload)
+        return {
+            "success": data.get("success", True),
+            "message": data.get("message", "If that email exists, a magic link has been sent")
+        }
+
+    def verify_email(self, *, token: str) -> Dict[str, Any]:
+        """
+        Verify email using token (from magic link or OTP verification).
+        
+        Marks email as verified and sends welcome email.
+        
+        Args:
+            token: Verification token from email
+        
+        Returns:
+            Dict with success status, message, and user info
+        """
+        payload = {"token": token}
+        data = self._request("POST", "/verify-email", json=payload)
+        return {
+            "success": data.get("success", True),
+            "message": data.get("message", "Email verified successfully!"),
+            "user": AuthUser(**_normalize_user(data.get("user"))) if data.get("user") else None
+        }
+
+    def resend_verification(self, *, email: str) -> Dict[str, Any]:
+        """
+        Resend verification email.
+        
+        Always returns success to prevent email enumeration.
+        
+        Args:
+            email: User's email address
+        
+        Returns:
+            Dict with success status and message
+        """
+        payload = {"email": email}
+        data = self._request("POST", "/resend-verification", json=payload)
+        return {
+            "success": data.get("success", True),
+            "message": data.get("message", "If that email exists, a verification email has been sent")
+        }
+
     def get_session(self) -> Dict[str, Optional[str]]:
         return {
             "access_token": self._access_token or self.storage.get_access_token(),
